@@ -1,0 +1,2510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caregiver Hub - Therapy Coordination</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Storage utilities
+        const STORAGE_KEY = 'caregiver_hub_data';
+
+        const loadData = () => {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                return data ? JSON.parse(data) : null;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const saveData = (data) => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        };
+
+        const initialData = loadData() || {
+            patientHub: null,
+            careTeam: [],
+            appointments: [],
+            messages: [],
+            invoices: [],
+            importedEvents: [] // Events imported from Google Calendar
+        };
+
+        function App() {
+            const [data, setData] = useState(initialData);
+            const [currentView, setCurrentView] = useState('home');
+            const [selectedItem, setSelectedItem] = useState(null);
+
+            useEffect(() => {
+                saveData(data);
+            }, [data]);
+
+            const updateData = (key, value) => {
+                setData(prev => ({ ...prev, [key]: value }));
+            };
+
+            if (!data.patientHub) {
+                return <PatientSetup onSetup={(hub) => updateData('patientHub', hub)} />;
+            }
+
+            return (
+                <div className="min-h-screen">
+                    <Header patientHub={data.patientHub} currentView={currentView} setCurrentView={setCurrentView} />
+                    <main className="max-w-7xl mx-auto px-4 py-6">
+                        {currentView === 'home' && (
+                            <HomeView 
+                                data={data} 
+                                setCurrentView={setCurrentView}
+                                setSelectedItem={setSelectedItem}
+                            />
+                        )}
+                        {currentView === 'schedule' && (
+                            <ScheduleView 
+                                appointments={data.appointments}
+                                careTeam={data.careTeam}
+                                importedEvents={data.importedEvents}
+                                onUpdate={(appointments) => updateData('appointments', appointments)}
+                                onUpdateImported={(events) => updateData('importedEvents', events)}
+                                selectedItem={selectedItem}
+                                setSelectedItem={setSelectedItem}
+                            />
+                        )}
+                        {currentView === 'messages' && (
+                            <MessagesView 
+                                messages={data.messages}
+                                careTeam={data.careTeam}
+                                onUpdate={(messages) => updateData('messages', messages)}
+                            />
+                        )}
+                        {currentView === 'billing' && (
+                            <BillingView 
+                                invoices={data.invoices}
+                                careTeam={data.careTeam}
+                                onUpdate={(invoices) => updateData('invoices', invoices)}
+                            />
+                        )}
+                        {currentView === 'team' && (
+                            <CareTeamView 
+                                careTeam={data.careTeam}
+                                onUpdate={(careTeam) => updateData('careTeam', careTeam)}
+                            />
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        function Header({ patientHub, currentView, setCurrentView }) {
+            const navItems = [
+                { id: 'home', label: 'Home', icon: 'fa-home' },
+                { id: 'schedule', label: 'Schedule', icon: 'fa-calendar' },
+                { id: 'messages', label: 'Messages', icon: 'fa-comments' },
+                { id: 'billing', label: 'Billing', icon: 'fa-file-invoice-dollar' },
+                { id: 'team', label: 'Care Team', icon: 'fa-users' }
+            ];
+
+            const exportData = () => {
+                const data = loadData();
+                const dataStr = JSON.stringify(data, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `caregiver-hub-backup-${new Date().toISOString().split('T')[0]}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+                alert('Data exported successfully!');
+            };
+
+            const importData = () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const data = JSON.parse(event.target.result);
+                            saveData(data);
+                            alert('Data imported successfully! Refreshing page...');
+                            window.location.reload();
+                        } catch (err) {
+                            alert('Error importing data: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+                input.click();
+            };
+
+            return (
+                <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+                    <div className="max-w-7xl mx-auto px-4 py-4">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <h1 className="text-2xl font-bold text-gray-900">Caregiver Hub</h1>
+                                <p className="text-sm text-gray-600">Caring for {patientHub.patientName}</p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <button
+                                    onClick={exportData}
+                                    className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                                    title="Export all data as backup"
+                                >
+                                    <i className="fas fa-download mr-2"></i>
+                                    Export Data
+                                </button>
+                                <button
+                                    onClick={importData}
+                                    className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                                    title="Import data from backup"
+                                >
+                                    <i className="fas fa-upload mr-2"></i>
+                                    Import Data
+                                </button>
+                            </div>
+                        </div>
+                        <nav className="flex space-x-1 overflow-x-auto">
+                            {navItems.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setCurrentView(item.id)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                                        currentView === item.id
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : 'text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    <i className={`fas ${item.icon} mr-2`}></i>
+                                    {item.label}
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+                </header>
+            );
+        }
+
+        function PatientSetup({ onSetup }) {
+            const [name, setName] = useState('');
+            const [address, setAddress] = useState('');
+            const [caregiverEmail, setCaregiverEmail] = useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSetup({
+                    id: Date.now(),
+                    patientName: name,
+                    address,
+                    caregiverEmail,
+                    createdAt: new Date().toISOString()
+                });
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
+                        <div className="text-center mb-6">
+                            <i className="fas fa-heart text-blue-600 text-4xl mb-4"></i>
+                            <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Caregiver Hub</h1>
+                            <p className="text-gray-600">Let's set up your care coordination center</p>
+                        </div>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Patient Name or Initials
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="E.g., Mom, E.S., John"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Home Address (Optional)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={address}
+                                    onChange={(e) => setAddress(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="Address for home visits"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Your Email
+                                </label>
+                                <input
+                                    type="email"
+                                    required
+                                    value={caregiverEmail}
+                                    onChange={(e) => setCaregiverEmail(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="For reminders and notifications"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+                            >
+                                Create Hub
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function HomeView({ data, setCurrentView, setSelectedItem }) {
+            const today = new Date();
+            const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+            
+            const upcomingAppointments = data.appointments
+                .filter(apt => {
+                    const aptDate = new Date(apt.startTime);
+                    return aptDate >= today && aptDate <= nextWeek && apt.status === 'scheduled';
+                })
+                .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+            const dueInvoices = data.invoices
+                .filter(inv => inv.status === 'due' || inv.status === 'sent')
+                .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
+            const recentMessages = data.messages
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                .slice(0, 3);
+
+            const quickActions = [
+                { label: 'Add Appointment', icon: 'fa-calendar-plus', view: 'schedule', color: 'blue' },
+                { label: 'Message Therapist', icon: 'fa-paper-plane', view: 'messages', color: 'green' },
+                { label: 'Log Invoice', icon: 'fa-receipt', view: 'billing', color: 'purple' },
+                { label: 'Add Therapist', icon: 'fa-user-plus', view: 'team', color: 'orange' }
+            ];
+
+            return (
+                <div className="space-y-6">
+                    {/* Quick Actions */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {quickActions.map(action => (
+                            <button
+                                key={action.label}
+                                onClick={() => setCurrentView(action.view)}
+                                className={`bg-white p-4 rounded-lg shadow hover:shadow-md transition border-l-4 border-${action.color}-500`}
+                            >
+                                <i className={`fas ${action.icon} text-${action.color}-600 text-2xl mb-2`}></i>
+                                <p className="text-sm font-medium text-gray-900">{action.label}</p>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Alerts */}
+                    {(dueInvoices.length > 0 || upcomingAppointments.length === 0) && (
+                        <div className="space-y-2">
+                            {dueInvoices.length > 0 && (
+                                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
+                                    <div className="flex items-center">
+                                        <i className="fas fa-exclamation-triangle text-yellow-600 mr-3"></i>
+                                        <p className="text-sm font-medium text-yellow-800">
+                                            {dueInvoices.length} invoice{dueInvoices.length > 1 ? 's' : ''} due or overdue
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                            {upcomingAppointments.length === 0 && data.careTeam.length > 0 && (
+                                <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
+                                    <div className="flex items-center">
+                                        <i className="fas fa-info-circle text-blue-600 mr-3"></i>
+                                        <p className="text-sm font-medium text-blue-800">
+                                            No appointments scheduled for the next 7 days
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Upcoming Appointments */}
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                            <h2 className="text-lg font-semibold text-gray-900">Next 7 Days</h2>
+                            <button
+                                onClick={() => setCurrentView('schedule')}
+                                className="text-blue-600 text-sm font-medium hover:text-blue-700"
+                            >
+                                View All
+                            </button>
+                        </div>
+                        <div className="divide-y divide-gray-200">
+                            {upcomingAppointments.length === 0 ? (
+                                <div className="p-8 text-center text-gray-500">
+                                    <i className="fas fa-calendar-xmark text-4xl mb-2 text-gray-300"></i>
+                                    <p>No upcoming appointments</p>
+                                    <button
+                                        onClick={() => setCurrentView('schedule')}
+                                        className="mt-2 text-blue-600 text-sm font-medium hover:text-blue-700"
+                                    >
+                                        Schedule one now
+                                    </button>
+                                </div>
+                            ) : (
+                                upcomingAppointments.map(apt => {
+                                    const therapist = data.careTeam.find(t => t.id === apt.careTeamMemberId);
+                                    return (
+                                        <div key={apt.id} className="p-4 hover:bg-gray-50">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center space-x-2 mb-1">
+                                                        <span className="font-medium text-gray-900">
+                                                            {therapist?.name || 'Unknown'}
+                                                        </span>
+                                                        <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                                                            {therapist?.discipline || 'N/A'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600">
+                                                        {new Date(apt.startTime).toLocaleDateString('en-US', {
+                                                            weekday: 'short',
+                                                            month: 'short',
+                                                            day: 'numeric'
+                                                        })} at {new Date(apt.startTime).toLocaleTimeString('en-US', {
+                                                            hour: 'numeric',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        {apt.durationMinutes} minutes • {apt.location}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedItem(apt);
+                                                        setCurrentView('schedule');
+                                                    }}
+                                                    className="text-gray-400 hover:text-gray-600"
+                                                >
+                                                    <i className="fas fa-chevron-right"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Recent Messages */}
+                    {recentMessages.length > 0 && (
+                        <div className="bg-white rounded-lg shadow">
+                            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                                <h2 className="text-lg font-semibold text-gray-900">Recent Messages</h2>
+                                <button
+                                    onClick={() => setCurrentView('messages')}
+                                    className="text-blue-600 text-sm font-medium hover:text-blue-700"
+                                >
+                                    View All
+                                </button>
+                            </div>
+                            <div className="divide-y divide-gray-200">
+                                {recentMessages.map(msg => {
+                                    const therapist = data.careTeam.find(t => t.id === msg.careTeamMemberId);
+                                    return (
+                                        <div key={msg.id} className="p-4 hover:bg-gray-50">
+                                            <div className="flex items-start space-x-3">
+                                                <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                                                    msg.direction === 'inbound' ? 'bg-green-100' : 'bg-blue-100'
+                                                }`}>
+                                                    <i className={`fas ${msg.direction === 'inbound' ? 'fa-arrow-down' : 'fa-arrow-up'} text-sm ${
+                                                        msg.direction === 'inbound' ? 'text-green-600' : 'text-blue-600'
+                                                    }`}></i>
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center space-x-2 mb-1">
+                                                        <span className="font-medium text-sm text-gray-900">
+                                                            {therapist?.name || 'General'}
+                                                        </span>
+                                                        <span className="text-xs text-gray-500">
+                                                            {new Date(msg.timestamp).toLocaleDateString()}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 line-clamp-2">{msg.bodyText}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Care Team Summary */}
+                    {data.careTeam.length > 0 && (
+                        <div className="bg-white rounded-lg shadow p-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <h2 className="text-lg font-semibold text-gray-900">Care Team</h2>
+                                <button
+                                    onClick={() => setCurrentView('team')}
+                                    className="text-blue-600 text-sm font-medium hover:text-blue-700"
+                                >
+                                    Manage
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {data.careTeam.map(member => (
+                                    <div key={member.id} className="flex items-center space-x-2 bg-gray-100 px-3 py-2 rounded-lg">
+                                        <i className="fas fa-user-md text-gray-600 text-sm"></i>
+                                        <span className="text-sm font-medium text-gray-700">{member.name}</span>
+                                        <span className="text-xs text-gray-500">({member.discipline})</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function ScheduleView({ appointments, careTeam, importedEvents, onUpdate, onUpdateImported, selectedItem, setSelectedItem }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [filter, setFilter] = useState('all');
+            const [showImportCalendar, setShowImportCalendar] = useState(false);
+            const [viewMode, setViewMode] = useState('month'); // 'list', 'week', 'month'
+            const [currentDate, setCurrentDate] = useState(new Date());
+
+            useEffect(() => {
+                if (selectedItem) {
+                    setEditingItem(selectedItem);
+                    setShowForm(true);
+                    setSelectedItem(null);
+                }
+            }, [selectedItem]);
+
+            const allAppointments = [...appointments];
+            
+            // Add imported events as appointments for display
+            if (importedEvents && importedEvents.length > 0) {
+                importedEvents.forEach(event => {
+                    allAppointments.push({
+                        id: `imported-${event.id}`,
+                        startTime: event.start,
+                        durationMinutes: event.duration || 60,
+                        status: 'scheduled',
+                        location: event.location || 'Imported',
+                        notes: event.summary,
+                        source: 'google-calendar',
+                        isImported: true
+                    });
+                });
+            }
+
+            const filteredAppointments = filter === 'all'
+                ? allAppointments
+                : allAppointments.filter(apt => apt.careTeamMemberId === parseInt(filter));
+
+            const sortedAppointments = [...filteredAppointments].sort(
+                (a, b) => new Date(b.startTime) - new Date(a.startTime)
+            );
+
+            const handleSave = (appointment) => {
+                if (editingItem) {
+                    onUpdate(appointments.map(apt => apt.id === appointment.id ? appointment : apt));
+                } else {
+                    onUpdate([...appointments, { ...appointment, id: Date.now() }]);
+                }
+                setShowForm(false);
+                setEditingItem(null);
+            };
+
+            const handleDelete = (id) => {
+                if (confirm('Delete this appointment?')) {
+                    onUpdate(appointments.filter(apt => apt.id !== id));
+                    setShowForm(false);
+                    setEditingItem(null);
+                }
+            };
+
+            const handleCalendarImport = (events) => {
+                onUpdateImported(events);
+                setShowImportCalendar(false);
+            };
+
+            const navigateMonth = (direction) => {
+                const newDate = new Date(currentDate);
+                newDate.setMonth(currentDate.getMonth() + direction);
+                setCurrentDate(newDate);
+            };
+
+            const navigateWeek = (direction) => {
+                const newDate = new Date(currentDate);
+                newDate.setDate(currentDate.getDate() + (direction * 7));
+                setCurrentDate(newDate);
+            };
+
+            return (
+                <div className="space-y-4">
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="flex flex-col space-y-3">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900">Schedule</h2>
+                                    {importedEvents && importedEvents.length > 0 && (
+                                        <p className="text-sm text-green-600 mt-1">
+                                            <i className="fas fa-check-circle mr-1"></i>
+                                            {importedEvents.length} events imported from Google Calendar
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                    <select
+                                        value={filter}
+                                        onChange={(e) => setFilter(e.target.value)}
+                                        className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                                    >
+                                        <option value="all">All Events</option>
+                                        {careTeam.map(member => (
+                                            <option key={member.id} value={member.id}>
+                                                {member.name} ({member.discipline})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        onClick={() => setShowImportCalendar(true)}
+                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium whitespace-nowrap"
+                                    >
+                                        <i className="fas fa-calendar-plus mr-2"></i>
+                                        Import Calendar
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setEditingItem(null);
+                                            setShowForm(true);
+                                        }}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap"
+                                    >
+                                        <i className="fas fa-plus mr-2"></i>
+                                        Add Appointment
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* View Toggle */}
+                            <div className="flex items-center space-x-2">
+                                <button
+                                    onClick={() => setViewMode('month')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                                        viewMode === 'month' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    <i className="fas fa-calendar mr-2"></i>Month
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('week')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                                        viewMode === 'week' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    <i className="fas fa-calendar-week mr-2"></i>Week
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('list')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                                        viewMode === 'list' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    <i className="fas fa-list mr-2"></i>List
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {showImportCalendar && (
+                        <CalendarImportForm
+                            onImport={handleCalendarImport}
+                            onCancel={() => setShowImportCalendar(false)}
+                        />
+                    )}
+
+                    {showForm && (
+                        <AppointmentForm
+                            careTeam={careTeam}
+                            appointment={editingItem}
+                            onSave={handleSave}
+                            onCancel={() => {
+                                setShowForm(false);
+                                setEditingItem(null);
+                            }}
+                            onDelete={editingItem ? handleDelete : null}
+                        />
+                    )}
+
+                    {viewMode === 'month' && (
+                        <MonthView 
+                            appointments={filteredAppointments}
+                            careTeam={careTeam}
+                            currentDate={currentDate}
+                            onNavigate={navigateMonth}
+                            onSelectAppointment={(apt) => {
+                                setEditingItem(apt);
+                                setShowForm(true);
+                            }}
+                        />
+                    )}
+
+                    {viewMode === 'week' && (
+                        <WeekView 
+                            appointments={filteredAppointments}
+                            careTeam={careTeam}
+                            currentDate={currentDate}
+                            onNavigate={navigateWeek}
+                            onSelectAppointment={(apt) => {
+                                setEditingItem(apt);
+                                setShowForm(true);
+                            }}
+                        />
+                    )}
+
+                    {viewMode === 'list' && (
+                        <div className="bg-white rounded-lg shadow divide-y divide-gray-200">
+                            {sortedAppointments.length === 0 ? (
+                                <div className="p-8 text-center text-gray-500">
+                                    <i className="fas fa-calendar-xmark text-4xl mb-2 text-gray-300"></i>
+                                    <p>No appointments yet</p>
+                                    <button
+                                        onClick={() => setShowForm(true)}
+                                        className="mt-2 text-blue-600 text-sm font-medium hover:text-blue-700"
+                                    >
+                                        Add your first appointment
+                                    </button>
+                                </div>
+                            ) : (
+                                sortedAppointments.map(apt => {
+                                    const therapist = careTeam.find(t => t.id === apt.careTeamMemberId);
+                                    const isPast = new Date(apt.startTime) < new Date();
+                                    const isImported = apt.isImported || apt.source === 'google-calendar';
+                                    
+                                    return (
+                                        <div key={apt.id} className={`p-4 hover:bg-gray-50 ${isImported ? 'bg-purple-50' : ''}`}>
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center space-x-2 mb-2">
+                                                        {isImported ? (
+                                                            <>
+                                                                <span className="font-semibold text-gray-900">
+                                                                    {apt.notes || 'Imported Event'}
+                                                                </span>
+                                                                <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">
+                                                                    Google Calendar
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span className="font-semibold text-gray-900">
+                                                                    {therapist?.name || 'Unknown'}
+                                                                </span>
+                                                                <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                                                                    {therapist?.discipline || 'N/A'}
+                                                                </span>
+                                                                <span className={`text-xs px-2 py-1 rounded ${
+                                                                    apt.status === 'scheduled' ? 'bg-green-100 text-green-700' :
+                                                                    apt.status === 'completed' ? 'bg-gray-100 text-gray-700' :
+                                                                    apt.status === 'canceled' ? 'bg-red-100 text-red-700' :
+                                                                    'bg-yellow-100 text-yellow-700'
+                                                                }`}>
+                                                                    {apt.status}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-sm text-gray-600 space-y-1">
+                                                        <p>
+                                                            <i className="fas fa-calendar mr-2 text-gray-400"></i>
+                                                            {new Date(apt.startTime).toLocaleDateString('en-US', {
+                                                                weekday: 'long',
+                                                                year: 'numeric',
+                                                                month: 'long',
+                                                                day: 'numeric'
+                                                            })}
+                                                        </p>
+                                                        <p>
+                                                            <i className="fas fa-clock mr-2 text-gray-400"></i>
+                                                            {new Date(apt.startTime).toLocaleTimeString('en-US', {
+                                                                hour: 'numeric',
+                                                                minute: '2-digit'
+                                                            })} ({apt.durationMinutes} min)
+                                                        </p>
+                                                        <p>
+                                                            <i className="fas fa-location-dot mr-2 text-gray-400"></i>
+                                                            {apt.location}
+                                                        </p>
+                                                        {!isImported && apt.notes && (
+                                                            <p className="text-gray-500 italic mt-2">{apt.notes}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {!isImported && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingItem(apt);
+                                                            setShowForm(true);
+                                                        }}
+                                                        className="text-blue-600 hover:text-blue-700 ml-4"
+                                                    >
+                                                        <i className="fas fa-edit"></i>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function MonthView({ appointments, careTeam, currentDate, onNavigate, onSelectAppointment }) {
+            const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+            const startDate = new Date(firstDay);
+            startDate.setDate(startDate.getDate() - firstDay.getDay()); // Start from Sunday
+
+            const days = [];
+            const current = new Date(startDate);
+            
+            for (let i = 0; i < 42; i++) { // 6 weeks
+                days.push(new Date(current));
+                current.setDate(current.getDate() + 1);
+            }
+
+            const getAppointmentsForDay = (date) => {
+                return appointments.filter(apt => {
+                    const aptDate = new Date(apt.startTime);
+                    return aptDate.getFullYear() === date.getFullYear() &&
+                           aptDate.getMonth() === date.getMonth() &&
+                           aptDate.getDate() === date.getDate();
+                });
+            };
+
+            const isCurrentMonth = (date) => {
+                return date.getMonth() === currentDate.getMonth();
+            };
+
+            const isToday = (date) => {
+                const today = new Date();
+                return date.getFullYear() === today.getFullYear() &&
+                       date.getMonth() === today.getMonth() &&
+                       date.getDate() === today.getDate();
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b">
+                        <button
+                            onClick={() => onNavigate(-1)}
+                            className="p-2 hover:bg-gray-100 rounded-lg"
+                        >
+                            <i className="fas fa-chevron-left"></i>
+                        </button>
+                        <h3 className="text-lg font-semibold">
+                            {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        </h3>
+                        <button
+                            onClick={() => onNavigate(1)}
+                            className="p-2 hover:bg-gray-100 rounded-lg"
+                        >
+                            <i className="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    {/* Calendar Grid */}
+                    <div className="p-4">
+                        {/* Day labels */}
+                        <div className="grid grid-cols-7 gap-2 mb-2">
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
+                                    {day}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Days */}
+                        <div className="grid grid-cols-7 gap-2">
+                            {days.map((date, idx) => {
+                                const dayAppointments = getAppointmentsForDay(date);
+                                const currentMonth = isCurrentMonth(date);
+                                const today = isToday(date);
+
+                                return (
+                                    <div
+                                        key={idx}
+                                        className={`min-h-24 border rounded-lg p-2 ${
+                                            !currentMonth ? 'bg-gray-50' : 'bg-white'
+                                        } ${today ? 'border-blue-500 border-2' : 'border-gray-200'}`}
+                                    >
+                                        <div className={`text-sm font-medium mb-1 ${
+                                            !currentMonth ? 'text-gray-400' : 'text-gray-900'
+                                        }`}>
+                                            {date.getDate()}
+                                        </div>
+                                        <div className="space-y-1">
+                                            {dayAppointments.slice(0, 3).map(apt => {
+                                                const therapist = careTeam.find(t => t.id === apt.careTeamMemberId);
+                                                const isImported = apt.isImported || apt.source === 'google-calendar';
+                                                const time = new Date(apt.startTime).toLocaleTimeString('en-US', {
+                                                    hour: 'numeric',
+                                                    minute: '2-digit'
+                                                });
+
+                                                return (
+                                                    <button
+                                                        key={apt.id}
+                                                        onClick={() => !isImported && onSelectAppointment(apt)}
+                                                        className={`w-full text-left text-xs px-2 py-1 rounded truncate ${
+                                                            isImported 
+                                                                ? 'bg-purple-100 text-purple-800 cursor-default'
+                                                                : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                                                        }`}
+                                                        title={isImported ? apt.notes : therapist?.name}
+                                                    >
+                                                        {time} {isImported ? apt.notes?.substring(0, 15) : therapist?.name}
+                                                    </button>
+                                                );
+                                            })}
+                                            {dayAppointments.length > 3 && (
+                                                <div className="text-xs text-gray-500 px-2">
+                                                    +{dayAppointments.length - 3} more
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function WeekView({ appointments, careTeam, currentDate, onNavigate, onSelectAppointment }) {
+            // Get start of week (Sunday)
+            const startOfWeek = new Date(currentDate);
+            startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+
+            const days = [];
+            for (let i = 0; i < 7; i++) {
+                const day = new Date(startOfWeek);
+                day.setDate(startOfWeek.getDate() + i);
+                days.push(day);
+            }
+
+            const getAppointmentsForDay = (date) => {
+                return appointments.filter(apt => {
+                    const aptDate = new Date(apt.startTime);
+                    return aptDate.getFullYear() === date.getFullYear() &&
+                           aptDate.getMonth() === date.getMonth() &&
+                           aptDate.getDate() === date.getDate();
+                }).sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+            };
+
+            const isToday = (date) => {
+                const today = new Date();
+                return date.getFullYear() === today.getFullYear() &&
+                       date.getMonth() === today.getMonth() &&
+                       date.getDate() === today.getDate();
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow">
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b">
+                        <button
+                            onClick={() => onNavigate(-1)}
+                            className="p-2 hover:bg-gray-100 rounded-lg"
+                        >
+                            <i className="fas fa-chevron-left"></i>
+                        </button>
+                        <h3 className="text-lg font-semibold">
+                            {days[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {days[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </h3>
+                        <button
+                            onClick={() => onNavigate(1)}
+                            className="p-2 hover:bg-gray-100 rounded-lg"
+                        >
+                            <i className="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+
+                    {/* Week Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-7 gap-2 p-4">
+                        {days.map((date, idx) => {
+                            const dayAppointments = getAppointmentsForDay(date);
+                            const today = isToday(date);
+
+                            return (
+                                <div
+                                    key={idx}
+                                    className={`border rounded-lg p-3 ${
+                                        today ? 'border-blue-500 border-2 bg-blue-50' : 'border-gray-200'
+                                    }`}
+                                >
+                                    <div className="text-center mb-3">
+                                        <div className="text-xs font-semibold text-gray-600">
+                                            {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                                        </div>
+                                        <div className={`text-lg font-bold ${
+                                            today ? 'text-blue-600' : 'text-gray-900'
+                                        }`}>
+                                            {date.getDate()}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {dayAppointments.length === 0 ? (
+                                            <p className="text-xs text-gray-400 text-center py-4">No events</p>
+                                        ) : (
+                                            dayAppointments.map(apt => {
+                                                const therapist = careTeam.find(t => t.id === apt.careTeamMemberId);
+                                                const isImported = apt.isImported || apt.source === 'google-calendar';
+                                                const time = new Date(apt.startTime).toLocaleTimeString('en-US', {
+                                                    hour: 'numeric',
+                                                    minute: '2-digit'
+                                                });
+
+                                                return (
+                                                    <button
+                                                        key={apt.id}
+                                                        onClick={() => !isImported && onSelectAppointment(apt)}
+                                                        className={`w-full text-left p-2 rounded text-xs ${
+                                                            isImported 
+                                                                ? 'bg-purple-100 border border-purple-200 cursor-default'
+                                                                : 'bg-blue-100 border border-blue-200 hover:bg-blue-200'
+                                                        }`}
+                                                    >
+                                                        <div className="font-semibold">{time}</div>
+                                                        <div className="truncate">
+                                                            {isImported ? apt.notes : therapist?.name}
+                                                        </div>
+                                                        {!isImported && apt.durationMinutes && (
+                                                            <div className="text-gray-600">{apt.durationMinutes} min</div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        function CalendarImportForm({ onImport, onCancel }) {
+            const [icsContent, setIcsContent] = useState('');
+            const [parsedEvents, setParsedEvents] = useState([]);
+            const [error, setError] = useState('');
+            const fileInputRef = React.useRef(null);
+
+            const parseICS = (content) => {
+                try {
+                    const events = [];
+                    const lines = content.split('\n');
+                    let currentEvent = null;
+
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        
+                        if (line === 'BEGIN:VEVENT') {
+                            currentEvent = {};
+                        } else if (line === 'END:VEVENT' && currentEvent) {
+                            if (currentEvent.start) {
+                                events.push({
+                                    id: currentEvent.uid || Date.now() + Math.random(),
+                                    summary: currentEvent.summary || 'Untitled Event',
+                                    start: currentEvent.start,
+                                    end: currentEvent.end,
+                                    duration: currentEvent.duration || 60,
+                                    location: currentEvent.location || ''
+                                });
+                            }
+                            currentEvent = null;
+                        } else if (currentEvent) {
+                            if (line.startsWith('DTSTART')) {
+                                const dateMatch = line.match(/\d{8}T\d{6}/) || line.match(/\d{8}/);
+                                if (dateMatch) {
+                                    currentEvent.start = parseICSDate(dateMatch[0]);
+                                }
+                            } else if (line.startsWith('DTEND')) {
+                                const dateMatch = line.match(/\d{8}T\d{6}/) || line.match(/\d{8}/);
+                                if (dateMatch) {
+                                    currentEvent.end = parseICSDate(dateMatch[0]);
+                                    if (currentEvent.start && currentEvent.end) {
+                                        const diff = new Date(currentEvent.end) - new Date(currentEvent.start);
+                                        currentEvent.duration = Math.round(diff / 60000); // minutes
+                                    }
+                                }
+                            } else if (line.startsWith('SUMMARY:')) {
+                                currentEvent.summary = line.substring(8);
+                            } else if (line.startsWith('LOCATION:')) {
+                                currentEvent.location = line.substring(9);
+                            } else if (line.startsWith('UID:')) {
+                                currentEvent.uid = line.substring(4);
+                            }
+                        }
+                    }
+
+                    return events;
+                } catch (e) {
+                    throw new Error('Failed to parse calendar file: ' + e.message);
+                }
+            };
+
+            const parseICSDate = (dateStr) => {
+                // Format: 20260205T113000 or 20260205
+                const year = dateStr.substring(0, 4);
+                const month = dateStr.substring(4, 6);
+                const day = dateStr.substring(6, 8);
+                let time = '00:00:00';
+                
+                if (dateStr.length > 8) {
+                    const hours = dateStr.substring(9, 11);
+                    const minutes = dateStr.substring(11, 13);
+                    const seconds = dateStr.substring(13, 15) || '00';
+                    time = `${hours}:${minutes}:${seconds}`;
+                }
+                
+                return `${year}-${month}-${day}T${time}`;
+            };
+
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const content = e.target.result;
+                    setIcsContent(content);
+                    try {
+                        const events = parseICS(content);
+                        setParsedEvents(events);
+                        setError('');
+                    } catch (err) {
+                        setError(err.message);
+                        setParsedEvents([]);
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            const handlePaste = () => {
+                try {
+                    const events = parseICS(icsContent);
+                    setParsedEvents(events);
+                    setError('');
+                } catch (err) {
+                    setError(err.message);
+                    setParsedEvents([]);
+                }
+            };
+
+            const handleImport = () => {
+                onImport(parsedEvents);
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        <i className="fas fa-calendar-plus text-purple-600 mr-2"></i>
+                        Import Google Calendar
+                    </h3>
+                    
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <h4 className="font-semibold text-blue-900 mb-2">How to export from Google Calendar:</h4>
+                        <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                            <li>Go to Google Calendar on your computer</li>
+                            <li>Click Settings (gear icon) → Settings</li>
+                            <li>Click "Import & Export" in left sidebar</li>
+                            <li>Click "Export" to download your calendar as a .ics file</li>
+                            <li>Upload that file here or paste its contents</li>
+                        </ol>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Upload .ics file
+                            </label>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".ics,.ical"
+                                onChange={handleFileUpload}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                            />
+                        </div>
+
+                        <div className="text-center text-gray-500">
+                            <span>OR</span>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Paste .ics file contents
+                            </label>
+                            <textarea
+                                value={icsContent}
+                                onChange={(e) => setIcsContent(e.target.value)}
+                                rows="6"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 font-mono text-xs"
+                                placeholder="BEGIN:VCALENDAR..."
+                            />
+                            <button
+                                type="button"
+                                onClick={handlePaste}
+                                disabled={!icsContent.trim()}
+                                className="mt-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300"
+                            >
+                                Parse Calendar
+                            </button>
+                        </div>
+
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                <p className="text-sm text-red-800">
+                                    <i className="fas fa-exclamation-circle mr-2"></i>
+                                    {error}
+                                </p>
+                            </div>
+                        )}
+
+                        {parsedEvents.length > 0 && (
+                            <div className="border-t pt-4">
+                                <h4 className="font-semibold text-gray-900 mb-3">
+                                    Found {parsedEvents.length} events
+                                </h4>
+                                <div className="max-h-60 overflow-y-auto space-y-2">
+                                    {parsedEvents.slice(0, 10).map((event, idx) => (
+                                        <div key={idx} className="p-3 bg-purple-50 rounded-lg text-sm">
+                                            <p className="font-medium text-gray-900">{event.summary}</p>
+                                            <p className="text-gray-600 text-xs mt-1">
+                                                {new Date(event.start).toLocaleString()} ({event.duration} min)
+                                            </p>
+                                        </div>
+                                    ))}
+                                    {parsedEvents.length > 10 && (
+                                        <p className="text-sm text-gray-500 text-center">
+                                            + {parsedEvents.length - 10} more events
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end space-x-3 pt-2 border-t">
+                            <button
+                                type="button"
+                                onClick={onCancel}
+                                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleImport}
+                                disabled={parsedEvents.length === 0}
+                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            >
+                                <i className="fas fa-check mr-2"></i>
+                                Import {parsedEvents.length} Events
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function AppointmentForm({ careTeam, appointment, onSave, onCancel, onDelete }) {
+            const [formData, setFormData] = useState(appointment || {
+                careTeamMemberId: careTeam[0]?.id || '',
+                startTime: '',
+                durationMinutes: 60,
+                status: 'scheduled',
+                location: 'Home',
+                notes: '',
+                source: 'manual'
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave({ ...formData, id: appointment?.id });
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        {appointment ? 'Edit Appointment' : 'New Appointment'}
+                    </h3>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Therapist</label>
+                            <select
+                                required
+                                value={formData.careTeamMemberId}
+                                onChange={(e) => setFormData({ ...formData, careTeamMemberId: parseInt(e.target.value) })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select therapist</option>
+                                {careTeam.map(member => (
+                                    <option key={member.id} value={member.id}>
+                                        {member.name} ({member.discipline})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Date & Time</label>
+                                <input
+                                    type="datetime-local"
+                                    required
+                                    value={formData.startTime}
+                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+                                <input
+                                    type="number"
+                                    required
+                                    min="15"
+                                    step="15"
+                                    value={formData.durationMinutes}
+                                    onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                                <select
+                                    value={formData.status}
+                                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="scheduled">Scheduled</option>
+                                    <option value="rescheduled">Rescheduled</option>
+                                    <option value="canceled">Canceled</option>
+                                    <option value="completed">Completed</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formData.location}
+                                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Notes (arrival instructions, supplies, etc.)</label>
+                            <textarea
+                                value={formData.notes}
+                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                rows="3"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                placeholder="Any special instructions or notes..."
+                            />
+                        </div>
+                        <div className="flex justify-between pt-2">
+                            <div>
+                                {onDelete && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onDelete(appointment.id)}
+                                        className="px-4 py-2 text-red-600 hover:text-red-700 font-medium"
+                                    >
+                                        <i className="fas fa-trash mr-2"></i>
+                                        Delete
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={onCancel}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                    {appointment ? 'Save Changes' : 'Add Appointment'}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        function MessagesView({ messages, careTeam, onUpdate }) {
+            const [showForm, setShowForm] = useState(false);
+            const [showImport, setShowImport] = useState(false);
+            const [filter, setFilter] = useState('all');
+
+            const filteredMessages = filter === 'all'
+                ? messages
+                : messages.filter(msg => msg.careTeamMemberId === parseInt(filter));
+
+            const sortedMessages = [...filteredMessages].sort(
+                (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+            );
+
+            const handleSave = (message) => {
+                onUpdate([...messages, { ...message, id: Date.now() }]);
+                setShowForm(false);
+            };
+
+            const handleImport = (message) => {
+                onUpdate([...messages, { ...message, id: Date.now() }]);
+                setShowImport(false);
+            };
+
+            return (
+                <div className="space-y-4">
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0">
+                            <h2 className="text-xl font-bold text-gray-900">Messages</h2>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <select
+                                    value={filter}
+                                    onChange={(e) => setFilter(e.target.value)}
+                                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="all">All Messages</option>
+                                    {careTeam.map(member => (
+                                        <option key={member.id} value={member.id}>
+                                            {member.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={() => setShowImport(true)}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+                                >
+                                    <i className="fas fa-file-import mr-2"></i>
+                                    Import Message
+                                </button>
+                                <button
+                                    onClick={() => setShowForm(true)}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                                >
+                                    <i className="fas fa-plus mr-2"></i>
+                                    Send Message
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {showImport && (
+                        <ImportMessageForm
+                            careTeam={careTeam}
+                            onSave={handleImport}
+                            onCancel={() => setShowImport(false)}
+                        />
+                    )}
+
+                    {showForm && (
+                        <MessageForm
+                            careTeam={careTeam}
+                            onSave={handleSave}
+                            onCancel={() => setShowForm(false)}
+                        />
+                    )}
+
+                    <div className="bg-white rounded-lg shadow">
+                        {sortedMessages.length === 0 ? (
+                            <div className="p-8 text-center text-gray-500">
+                                <i className="fas fa-comments text-4xl mb-2 text-gray-300"></i>
+                                <p>No messages yet</p>
+                                <button
+                                    onClick={() => setShowForm(true)}
+                                    className="mt-2 text-blue-600 text-sm font-medium hover:text-blue-700"
+                                >
+                                    Log your first message
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-gray-200">
+                                {sortedMessages.map(msg => {
+                                    const therapist = careTeam.find(t => t.id === msg.careTeamMemberId);
+                                    return (
+                                        <div key={msg.id} className="p-4">
+                                            <div className="flex items-start space-x-3">
+                                                <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                                                    msg.direction === 'inbound' ? 'bg-green-100' : 'bg-blue-100'
+                                                }`}>
+                                                    <i className={`fas ${msg.direction === 'inbound' ? 'fa-arrow-down' : 'fa-arrow-up'} ${
+                                                        msg.direction === 'inbound' ? 'text-green-600' : 'text-blue-600'
+                                                    }`}></i>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <div className="flex items-center space-x-2">
+                                                            <span className="font-semibold text-gray-900">
+                                                                {therapist?.name || 'General Message'}
+                                                            </span>
+                                                            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">
+                                                                {msg.channel}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-sm text-gray-500">
+                                                            {new Date(msg.timestamp).toLocaleDateString('en-US', {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                hour: 'numeric',
+                                                                minute: '2-digit'
+                                                            })}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-gray-700 whitespace-pre-wrap">{msg.bodyText}</p>
+                                                    {msg.attachments && msg.attachments.length > 0 && (
+                                                        <div className="mt-2">
+                                                            <span className="text-xs text-gray-500">
+                                                                <i className="fas fa-paperclip mr-1"></i>
+                                                                {msg.attachments.length} attachment(s)
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function MessageForm({ careTeam, onSave, onCancel }) {
+            const [formData, setFormData] = useState({
+                careTeamMemberId: null,
+                direction: 'outbound',
+                channel: 'email',
+                bodyText: '',
+                timestamp: new Date().toISOString(),
+                attachments: []
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave(formData);
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Send Message</h3>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Therapist</label>
+                            <select
+                                required
+                                value={formData.careTeamMemberId || ''}
+                                onChange={(e) => setFormData({ ...formData, careTeamMemberId: e.target.value ? parseInt(e.target.value) : null })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select therapist</option>
+                                {careTeam.map(member => (
+                                    <option key={member.id} value={member.id}>
+                                        {member.name} ({member.discipline})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                            <textarea
+                                required
+                                value={formData.bodyText}
+                                onChange={(e) => setFormData({ ...formData, bodyText: e.target.value })}
+                                rows="6"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                placeholder="Type your message..."
+                            />
+                        </div>
+                        {formData.careTeamMemberId && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <p className="text-sm text-blue-800">
+                                    <i className="fas fa-info-circle mr-2"></i>
+                                    Will send via {careTeam.find(t => t.id === formData.careTeamMemberId)?.preferredChannel || 'email'}
+                                </p>
+                            </div>
+                        )}
+                        <div className="flex justify-end space-x-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={onCancel}
+                                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                            >
+                                <i className="fas fa-paper-plane mr-2"></i>
+                                Send Message
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        function ImportMessageForm({ careTeam, onSave, onCancel }) {
+            const [rawMessage, setRawMessage] = useState('');
+            const [parsedData, setParsedData] = useState(null);
+            const [selectedTherapist, setSelectedTherapist] = useState(null);
+            const [messageType, setMessageType] = useState('email');
+            const [draftReply, setDraftReply] = useState('');
+
+            // Get all appointments from storage to check conflicts
+            const getAllAppointments = () => {
+                const storedData = loadData();
+                if (!storedData) return [];
+                
+                const allEvents = [...(storedData.appointments || [])];
+                
+                // Add imported Google Calendar events
+                if (storedData.importedEvents) {
+                    storedData.importedEvents.forEach(event => {
+                        allEvents.push({
+                            id: `imported-${event.id}`,
+                            startTime: event.start,
+                            durationMinutes: event.duration || 60,
+                            notes: event.summary,
+                            isImported: true
+                        });
+                    });
+                }
+                
+                return allEvents;
+            };
+
+            const checkConflict = (proposedDateTime) => {
+                const allAppointments = getAllAppointments();
+                const proposedTime = new Date(proposedDateTime);
+                
+                for (const apt of allAppointments) {
+                    const aptStart = new Date(apt.startTime);
+                    const aptEnd = new Date(aptStart.getTime() + apt.durationMinutes * 60000);
+                    const proposedEnd = new Date(proposedTime.getTime() + 60 * 60000); // Assume 60 min
+                    
+                    // Check for overlap
+                    if ((proposedTime >= aptStart && proposedTime < aptEnd) ||
+                        (proposedEnd > aptStart && proposedEnd <= aptEnd) ||
+                        (proposedTime <= aptStart && proposedEnd >= aptEnd)) {
+                        return {
+                            hasConflict: true,
+                            conflictWith: apt.notes || (apt.careTeamMemberId ? 'Another appointment' : 'Existing event')
+                        };
+                    }
+                }
+                
+                return { hasConflict: false };
+            };
+
+            const parseMessage = () => {
+                if (!rawMessage.trim()) return;
+
+                const suggestions = [];
+                const lines = rawMessage.split('\n');
+                
+                // Enhanced parsing for common patterns
+                lines.forEach(line => {
+                    // Pattern: "Feb 5 arrive between 11:15/11:30am"
+                    let match = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:\s+arrive\s+between\s+|at\s+)?(\d{1,2}):(\d{2})/i);
+                    if (match) {
+                        const month = getMonthNumber(match[1]);
+                        const day = match[2];
+                        const hour = parseInt(match[3]);
+                        const minute = match[4];
+                        const dateTime = `2026-${month}-${day.padStart(2, '0')}T${hour.toString().padStart(2, '0')}:${minute}:00`;
+                        
+                        const conflict = checkConflict(dateTime);
+                        
+                        suggestions.push({
+                            text: line.trim(),
+                            date: `${match[1]} ${day}`,
+                            time: `${match[3]}:${match[4]}`,
+                            dateTime: dateTime,
+                            hasConflict: conflict.hasConflict,
+                            conflictWith: conflict.conflictWith,
+                            type: 'appointment'
+                        });
+                    }
+                    
+                    // Pattern: "Feb 10 if I can arrive a bit before 4pm"
+                    match = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}).*?(\d{1,2})pm/i);
+                    if (match && !suggestions.find(s => s.text === line.trim())) {
+                        const month = getMonthNumber(match[1]);
+                        const day = match[2];
+                        const hour = parseInt(match[3]);
+                        const dateTime = `2026-${month}-${day.padStart(2, '0')}T${(hour === 12 ? 12 : hour + 12).toString().padStart(2, '0')}:00:00`;
+                        
+                        const conflict = checkConflict(dateTime);
+                        
+                        suggestions.push({
+                            text: line.trim(),
+                            date: `${match[1]} ${day}`,
+                            time: `${match[3]}pm`,
+                            dateTime: dateTime,
+                            hasConflict: conflict.hasConflict,
+                            conflictWith: conflict.conflictWith,
+                            type: 'appointment'
+                        });
+                    }
+                    
+                    // Pattern: "Feb 12 at 4pm"
+                    match = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})\s+at\s+(\d{1,2})pm/i);
+                    if (match && !suggestions.find(s => s.text === line.trim())) {
+                        const month = getMonthNumber(match[1]);
+                        const day = match[2];
+                        const hour = parseInt(match[3]);
+                        const dateTime = `2026-${month}-${day.padStart(2, '0')}T${(hour === 12 ? 12 : hour + 12).toString().padStart(2, '0')}:00:00`;
+                        
+                        const conflict = checkConflict(dateTime);
+                        
+                        suggestions.push({
+                            text: line.trim(),
+                            date: `${match[1]} ${day}`,
+                            time: `${match[3]}pm`,
+                            dateTime: dateTime,
+                            hasConflict: conflict.hasConflict,
+                            conflictWith: conflict.conflictWith,
+                            type: 'appointment'
+                        });
+                    }
+                });
+
+                if (suggestions.length === 0) {
+                    suggestions.push({
+                        text: 'No specific dates/times detected',
+                        type: 'none'
+                    });
+                }
+
+                setParsedData({
+                    originalText: rawMessage,
+                    suggestions: suggestions
+                });
+
+                // Generate draft reply
+                if (suggestions.length > 0 && suggestions[0].type !== 'none') {
+                    generateDraftReply(suggestions);
+                }
+            };
+
+            const getMonthNumber = (monthStr) => {
+                const months = {
+                    'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+                    'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+                    'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+                };
+                return months[monthStr.toLowerCase().substring(0, 3)] || '01';
+            };
+
+            const generateDraftReply = (suggestions) => {
+                const therapist = careTeam.find(t => t.id === selectedTherapist);
+                const therapistName = therapist ? therapist.name.split(' ')[0] : 'there';
+                
+                const available = suggestions.filter(s => !s.hasConflict);
+                const conflicts = suggestions.filter(s => s.hasConflict);
+                
+                let reply = `Hi ${therapistName},\n\nThanks for sending your availability! `;
+                
+                if (available.length > 0 && conflicts.length === 0) {
+                    reply += `Great news - all of these times work for us:\n\n`;
+                    available.forEach(s => {
+                        reply += `✓ ${s.date} at ${s.time}\n`;
+                    });
+                    reply += `\nLet's go ahead and schedule these. Looking forward to it!`;
+                } else if (available.length > 0 && conflicts.length > 0) {
+                    reply += `Here's what works:\n\n`;
+                    available.forEach(s => {
+                        reply += `✓ ${s.date} at ${s.time} - WORKS\n`;
+                    });
+                    reply += `\nUnfortunately these times conflict with other appointments:\n\n`;
+                    conflicts.forEach(s => {
+                        reply += `✗ ${s.date} at ${s.time} - conflicts with ${s.conflictWith}\n`;
+                    });
+                    reply += `\nDo you have any alternative times for the conflicts?`;
+                } else {
+                    reply += `Unfortunately all of these times conflict with existing appointments:\n\n`;
+                    conflicts.forEach(s => {
+                        reply += `✗ ${s.date} at ${s.time} - conflicts with ${s.conflictWith}\n`;
+                    });
+                    reply += `\nDo you have any other availability we could work with?`;
+                }
+                
+                reply += `\n\nBest,\nChristian`;
+                
+                setDraftReply(reply);
+            };
+
+            const copyToClipboard = () => {
+                navigator.clipboard.writeText(draftReply).then(() => {
+                    alert('Reply copied to clipboard!');
+                });
+            };
+
+            const handleSubmit = () => {
+                onSave({
+                    careTeamMemberId: selectedTherapist,
+                    direction: 'inbound',
+                    channel: messageType,
+                    bodyText: rawMessage,
+                    timestamp: new Date().toISOString(),
+                    attachments: []
+                });
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        <i className="fas fa-file-import text-green-600 mr-2"></i>
+                        Import Message
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                        Paste an email or text message from a therapist. We'll detect conflicts with your existing calendar and draft a response.
+                    </p>
+                    
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">From Therapist</label>
+                                <select
+                                    value={selectedTherapist || ''}
+                                    onChange={(e) => setSelectedTherapist(e.target.value ? parseInt(e.target.value) : null)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Select therapist (optional)</option>
+                                    {careTeam.map(member => (
+                                        <option key={member.id} value={member.id}>
+                                            {member.name} ({member.discipline})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Message Type</label>
+                                <select
+                                    value={messageType}
+                                    onChange={(e) => setMessageType(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="email">Email</option>
+                                    <option value="sms">Text/SMS</option>
+                                    <option value="portal">Portal Message</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Paste Message Content
+                            </label>
+                            <textarea
+                                value={rawMessage}
+                                onChange={(e) => setRawMessage(e.target.value)}
+                                rows="8"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                                placeholder="Paste the full email or text message here..."
+                            />
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={parseMessage}
+                            disabled={!rawMessage.trim()}
+                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                            <i className="fas fa-magic mr-2"></i>
+                            Check Conflicts & Draft Reply
+                        </button>
+
+                        {parsedData && (
+                            <div className="border-t pt-4 space-y-4">
+                                <div>
+                                    <h4 className="font-semibold text-gray-900 mb-3">
+                                        <i className="fas fa-calendar-check text-blue-500 mr-2"></i>
+                                        Availability Check
+                                    </h4>
+                                    <div className="space-y-2">
+                                        {parsedData.suggestions.map((suggestion, idx) => (
+                                            <div key={idx} className={`p-3 rounded-lg border ${
+                                                suggestion.type === 'appointment' && !suggestion.hasConflict ? 'bg-green-50 border-green-300' :
+                                                suggestion.type === 'appointment' && suggestion.hasConflict ? 'bg-red-50 border-red-300' :
+                                                'bg-gray-50 border-gray-200'
+                                            }`}>
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex-1">
+                                                        <p className="text-sm text-gray-700 mb-1">{suggestion.text}</p>
+                                                        {suggestion.type === 'appointment' && (
+                                                            <div className="flex items-center space-x-3 text-xs">
+                                                                <span className="bg-white px-2 py-1 rounded font-medium">
+                                                                    {suggestion.date} at {suggestion.time}
+                                                                </span>
+                                                                {suggestion.hasConflict ? (
+                                                                    <span className="text-red-700 font-medium">
+                                                                        ✗ Conflicts with: {suggestion.conflictWith}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-green-700 font-medium">
+                                                                        ✓ Available
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {draftReply && (
+                                    <div>
+                                        <h4 className="font-semibold text-gray-900 mb-3">
+                                            <i className="fas fa-pen-to-square text-purple-500 mr-2"></i>
+                                            Suggested Reply
+                                        </h4>
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                            <pre className="whitespace-pre-wrap text-sm text-gray-800 font-sans mb-3">
+{draftReply}
+                                            </pre>
+                                            <button
+                                                type="button"
+                                                onClick={copyToClipboard}
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                                            >
+                                                <i className="fas fa-copy mr-2"></i>
+                                                Copy Reply to Clipboard
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Copy this reply and paste it into your email or text message to {careTeam.find(t => t.id === selectedTherapist)?.name || 'the therapist'}.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="flex justify-end space-x-3 pt-2 border-t">
+                            <button
+                                type="button"
+                                onClick={onCancel}
+                                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSubmit}
+                                disabled={!rawMessage.trim()}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            >
+                                <i className="fas fa-save mr-2"></i>
+                                Save Message
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function BillingView({ invoices, careTeam, onUpdate }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+
+            const handleSave = (invoice) => {
+                if (editingItem) {
+                    onUpdate(invoices.map(inv => inv.id === invoice.id ? invoice : inv));
+                } else {
+                    onUpdate([...invoices, { ...invoice, id: Date.now() }]);
+                }
+                setShowForm(false);
+                setEditingItem(null);
+            };
+
+            const handleDelete = (id) => {
+                if (confirm('Delete this invoice?')) {
+                    onUpdate(invoices.filter(inv => inv.id !== id));
+                    setShowForm(false);
+                    setEditingItem(null);
+                }
+            };
+
+            const sortedInvoices = [...invoices].sort(
+                (a, b) => new Date(b.dueDate) - new Date(a.dueDate)
+            );
+
+            const totalOutstanding = invoices
+                .filter(inv => inv.status === 'due' || inv.status === 'sent')
+                .reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+
+            const totalPaid = invoices
+                .filter(inv => inv.status === 'paid')
+                .reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+
+            return (
+                <div className="space-y-4">
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900">Billing</h2>
+                                <div className="flex space-x-4 mt-2 text-sm">
+                                    <span className="text-red-600 font-medium">
+                                        Outstanding: ${totalOutstanding.toFixed(2)}
+                                    </span>
+                                    <span className="text-green-600 font-medium">
+                                        Paid: ${totalPaid.toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setEditingItem(null);
+                                    setShowForm(true);
+                                }}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                            >
+                                <i className="fas fa-plus mr-2"></i>
+                                Log Invoice
+                            </button>
+                        </div>
+                    </div>
+
+                    {showForm && (
+                        <InvoiceForm
+                            careTeam={careTeam}
+                            invoice={editingItem}
+                            onSave={handleSave}
+                            onCancel={() => {
+                                setShowForm(false);
+                                setEditingItem(null);
+                            }}
+                            onDelete={editingItem ? handleDelete : null}
+                        />
+                    )}
+
+                    <div className="bg-white rounded-lg shadow">
+                        {sortedInvoices.length === 0 ? (
+                            <div className="p-8 text-center text-gray-500">
+                                <i className="fas fa-file-invoice text-4xl mb-2 text-gray-300"></i>
+                                <p>No invoices yet</p>
+                                <button
+                                    onClick={() => setShowForm(true)}
+                                    className="mt-2 text-blue-600 text-sm font-medium hover:text-blue-700"
+                                >
+                                    Log your first invoice
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-gray-200">
+                                {sortedInvoices.map(inv => {
+                                    const therapist = careTeam.find(t => t.id === inv.careTeamMemberId);
+                                    const isOverdue = new Date(inv.dueDate) < new Date() && 
+                                        (inv.status === 'due' || inv.status === 'sent');
+                                    return (
+                                        <div key={inv.id} className="p-4 hover:bg-gray-50">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center space-x-2 mb-2">
+                                                        <span className="font-semibold text-gray-900">
+                                                            {therapist?.name || 'Unknown'}
+                                                        </span>
+                                                        <span className={`text-xs px-2 py-1 rounded ${
+                                                            inv.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                                            inv.status === 'due' ? 'bg-yellow-100 text-yellow-700' :
+                                                            'bg-blue-100 text-blue-700'
+                                                        }`}>
+                                                            {inv.status}
+                                                        </span>
+                                                        {isOverdue && (
+                                                            <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">
+                                                                Overdue
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-sm text-gray-600 space-y-1">
+                                                        <p className="text-lg font-bold text-gray-900">
+                                                            ${parseFloat(inv.amount).toFixed(2)}
+                                                        </p>
+                                                        <p>
+                                                            <i className="fas fa-calendar mr-2 text-gray-400"></i>
+                                                            Due: {new Date(inv.dueDate).toLocaleDateString()}
+                                                        </p>
+                                                        {inv.paymentLink && (
+                                                            <p>
+                                                                <i className="fas fa-link mr-2 text-gray-400"></i>
+                                                                <a href={inv.paymentLink} target="_blank" rel="noopener noreferrer" 
+                                                                   className="text-blue-600 hover:underline">
+                                                                    Payment Link
+                                                                </a>
+                                                            </p>
+                                                        )}
+                                                        {inv.notes && (
+                                                            <p className="text-gray-500 italic mt-2">{inv.notes}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingItem(inv);
+                                                        setShowForm(true);
+                                                    }}
+                                                    className="text-blue-600 hover:text-blue-700 ml-4"
+                                                >
+                                                    <i className="fas fa-edit"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function InvoiceForm({ careTeam, invoice, onSave, onCancel, onDelete }) {
+            const [formData, setFormData] = useState(invoice || {
+                careTeamMemberId: careTeam[0]?.id || '',
+                amount: '',
+                dueDate: '',
+                status: 'sent',
+                paymentLink: '',
+                notes: ''
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave({ ...formData, id: invoice?.id });
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        {invoice ? 'Edit Invoice' : 'New Invoice'}
+                    </h3>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Therapist</label>
+                            <select
+                                required
+                                value={formData.careTeamMemberId}
+                                onChange={(e) => setFormData({ ...formData, careTeamMemberId: parseInt(e.target.value) })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">Select therapist</option>
+                                {careTeam.map(member => (
+                                    <option key={member.id} value={member.id}>
+                                        {member.name} ({member.discipline})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-2 text-gray-500">$</span>
+                                    <input
+                                        type="number"
+                                        required
+                                        step="0.01"
+                                        min="0"
+                                        value={formData.amount}
+                                        onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                        className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={formData.dueDate}
+                                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                            <select
+                                value={formData.status}
+                                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="draft">Draft</option>
+                                <option value="sent">Sent</option>
+                                <option value="due">Due</option>
+                                <option value="paid">Paid</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Link (optional)</label>
+                            <input
+                                type="url"
+                                value={formData.paymentLink}
+                                onChange={(e) => setFormData({ ...formData, paymentLink: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                placeholder="https://..."
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                            <textarea
+                                value={formData.notes}
+                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                rows="3"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                placeholder="Superbill info, service details, etc."
+                            />
+                        </div>
+                        <div className="flex justify-between pt-2">
+                            <div>
+                                {onDelete && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onDelete(invoice.id)}
+                                        className="px-4 py-2 text-red-600 hover:text-red-700 font-medium"
+                                    >
+                                        <i className="fas fa-trash mr-2"></i>
+                                        Delete
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={onCancel}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                    {invoice ? 'Save Changes' : 'Add Invoice'}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        function CareTeamView({ careTeam, onUpdate }) {
+            const [showForm, setShowForm] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+
+            const handleSave = (member) => {
+                if (editingItem) {
+                    onUpdate(careTeam.map(m => m.id === member.id ? member : m));
+                } else {
+                    onUpdate([...careTeam, { ...member, id: Date.now() }]);
+                }
+                setShowForm(false);
+                setEditingItem(null);
+            };
+
+            const handleDelete = (id) => {
+                if (confirm('Remove this therapist from the care team? This will not delete associated appointments, messages, or invoices.')) {
+                    onUpdate(careTeam.filter(m => m.id !== id));
+                    setShowForm(false);
+                    setEditingItem(null);
+                }
+            };
+
+            return (
+                <div className="space-y-4">
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-3 md:space-y-0">
+                            <h2 className="text-xl font-bold text-gray-900">Care Team</h2>
+                            <button
+                                onClick={() => {
+                                    setEditingItem(null);
+                                    setShowForm(true);
+                                }}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                            >
+                                <i className="fas fa-plus mr-2"></i>
+                                Add Therapist
+                            </button>
+                        </div>
+                    </div>
+
+                    {showForm && (
+                        <CareTeamForm
+                            member={editingItem}
+                            onSave={handleSave}
+                            onCancel={() => {
+                                setShowForm(false);
+                                setEditingItem(null);
+                            }}
+                            onDelete={editingItem ? handleDelete : null}
+                        />
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {careTeam.length === 0 ? (
+                            <div className="col-span-2 bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                                <i className="fas fa-users text-4xl mb-2 text-gray-300"></i>
+                                <p>No therapists added yet</p>
+                                <button
+                                    onClick={() => setShowForm(true)}
+                                    className="mt-2 text-blue-600 text-sm font-medium hover:text-blue-700"
+                                >
+                                    Add your first therapist
+                                </button>
+                            </div>
+                        ) : (
+                            careTeam.map(member => (
+                                <div key={member.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-gray-900">{member.name}</h3>
+                                            <span className="inline-block mt-1 text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                                                {member.discipline}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                setEditingItem(member);
+                                                setShowForm(true);
+                                            }}
+                                            className="text-blue-600 hover:text-blue-700"
+                                        >
+                                            <i className="fas fa-edit"></i>
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2 text-sm text-gray-600">
+                                        {member.contactEmail && (
+                                            <p>
+                                                <i className="fas fa-envelope w-4 text-gray-400 mr-2"></i>
+                                                <a href={`mailto:${member.contactEmail}`} className="text-blue-600 hover:underline">
+                                                    {member.contactEmail}
+                                                </a>
+                                            </p>
+                                        )}
+                                        {member.contactPhone && (
+                                            <p>
+                                                <i className="fas fa-phone w-4 text-gray-400 mr-2"></i>
+                                                <a href={`tel:${member.contactPhone}`} className="text-blue-600 hover:underline">
+                                                    {member.contactPhone}
+                                                </a>
+                                            </p>
+                                        )}
+                                        <p>
+                                            <i className="fas fa-comment-dots w-4 text-gray-400 mr-2"></i>
+                                            Prefers: {member.preferredChannel}
+                                        </p>
+                                        {member.billingStyle && (
+                                            <p>
+                                                <i className="fas fa-credit-card w-4 text-gray-400 mr-2"></i>
+                                                {member.billingStyle}
+                                            </p>
+                                        )}
+                                        {member.portalNotes && (
+                                            <p className="text-gray-500 italic mt-2">{member.portalNotes}</p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function CareTeamForm({ member, onSave, onCancel, onDelete }) {
+            const [formData, setFormData] = useState(member || {
+                name: '',
+                discipline: 'PT',
+                contactEmail: '',
+                contactPhone: '',
+                preferredChannel: 'email',
+                billingStyle: '',
+                portalNotes: ''
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave({ ...formData, id: member?.id });
+            };
+
+            return (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        {member ? 'Edit Therapist' : 'New Therapist'}
+                    </h3>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Discipline</label>
+                                <select
+                                    value={formData.discipline}
+                                    onChange={(e) => setFormData({ ...formData, discipline: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="PT">Physical Therapy (PT)</option>
+                                    <option value="OT">Occupational Therapy (OT)</option>
+                                    <option value="SLP">Speech-Language Pathology (SLP)</option>
+                                    <option value="Music">Music Therapy</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    value={formData.contactEmail}
+                                    onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                                <input
+                                    type="tel"
+                                    value={formData.contactPhone}
+                                    onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Contact Method</label>
+                            <select
+                                value={formData.preferredChannel}
+                                onChange={(e) => setFormData({ ...formData, preferredChannel: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="email">Email</option>
+                                <option value="sms">Text/SMS</option>
+                                <option value="portal">Portal</option>
+                                <option value="manual">Manual/Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Billing Style</label>
+                            <input
+                                type="text"
+                                value={formData.billingStyle}
+                                onChange={(e) => setFormData({ ...formData, billingStyle: e.target.value })}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                placeholder="E.g., Invoice link, Recurring, Superbill"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Portal/Notes</label>
+                            <textarea
+                                value={formData.portalNotes}
+                                onChange={(e) => setFormData({ ...formData, portalNotes: e.target.value })}
+                                rows="3"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                placeholder="Portal links, scheduling preferences, special instructions..."
+                            />
+                        </div>
+                        <div className="flex justify-between pt-2">
+                            <div>
+                                {onDelete && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onDelete(member.id)}
+                                        className="px-4 py-2 text-red-600 hover:text-red-700 font-medium"
+                                    >
+                                        <i className="fas fa-trash mr-2"></i>
+                                        Remove
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={onCancel}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                    {member ? 'Save Changes' : 'Add Therapist'}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
