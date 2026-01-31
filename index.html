@@ -37,6 +37,99 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         };
 
+        // Therapy type detection and color coding
+        const detectTherapyType = (title) => {
+            if (!title) return 'other';
+            
+            const lowerTitle = title.toLowerCase();
+            
+            // Physical Therapy detection
+            if (lowerTitle.includes('pt @') || 
+                lowerTitle.includes('pt@') ||
+                lowerTitle.includes('physical therapy') || 
+                lowerTitle.includes('physical therapist') ||
+                lowerTitle.match(/\bpt\b/)) {
+                return 'pt';
+            }
+            
+            // Occupational Therapy detection
+            if (lowerTitle.includes('ot @') || 
+                lowerTitle.includes('ot@') ||
+                lowerTitle.includes('occupational therapy') || 
+                lowerTitle.includes('occupational therapist') ||
+                lowerTitle.match(/\bot\b/)) {
+                return 'ot';
+            }
+            
+            // Speech Therapy detection
+            if (lowerTitle.includes('slp') || 
+                lowerTitle.includes('speech therapy') || 
+                lowerTitle.includes('speech therapist') ||
+                lowerTitle.includes('speech-language') ||
+                lowerTitle.match(/\bspeech\b/)) {
+                return 'slp';
+            }
+            
+            return 'other';
+        };
+
+        const getTherapyColor = (type) => {
+            const colors = {
+                pt: {
+                    bg: 'bg-green-100',
+                    border: 'border-green-300',
+                    text: 'text-green-800',
+                    hover: 'hover:bg-green-200',
+                    name: 'Physical Therapy'
+                },
+                ot: {
+                    bg: 'bg-purple-100',
+                    border: 'border-purple-300',
+                    text: 'text-purple-800',
+                    hover: 'hover:bg-purple-200',
+                    name: 'Occupational Therapy'
+                },
+                slp: {
+                    bg: 'bg-orange-100',
+                    border: 'border-orange-300',
+                    text: 'text-orange-800',
+                    hover: 'hover:bg-orange-200',
+                    name: 'Speech Therapy'
+                },
+                other: {
+                    bg: 'bg-blue-100',
+                    border: 'border-blue-300',
+                    text: 'text-blue-800',
+                    hover: 'hover:bg-blue-200',
+                    name: 'Other'
+                }
+            };
+            return colors[type] || colors.other;
+        };
+
+        // Convert to Eastern Time
+        const toEasternTime = (dateString) => {
+            const date = new Date(dateString);
+            return new Date(date.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        };
+
+        const formatTimeET = (dateString) => {
+            const date = toEasternTime(dateString);
+            return date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZone: 'America/New_York'
+            });
+        };
+
+        const formatDateET = (dateString, options = {}) => {
+            const date = toEasternTime(dateString);
+            return date.toLocaleDateString('en-US', {
+                ...options,
+                timeZone: 'America/New_York'
+            });
+        };
+
         const initialData = loadData() || {
             patientHub: null,
             careTeam: [],
@@ -577,6 +670,25 @@
                                             {importedEvents.length} events imported from Google Calendar
                                         </p>
                                     )}
+                                    {/* Color Legend */}
+                                    <div className="flex flex-wrap gap-3 mt-2 text-xs">
+                                        <div className="flex items-center space-x-1">
+                                            <div className="w-3 h-3 rounded bg-green-500"></div>
+                                            <span className="text-gray-600">PT</span>
+                                        </div>
+                                        <div className="flex items-center space-x-1">
+                                            <div className="w-3 h-3 rounded bg-purple-500"></div>
+                                            <span className="text-gray-600">OT</span>
+                                        </div>
+                                        <div className="flex items-center space-x-1">
+                                            <div className="w-3 h-3 rounded bg-orange-500"></div>
+                                            <span className="text-gray-600">Speech</span>
+                                        </div>
+                                        <div className="flex items-center space-x-1">
+                                            <div className="w-3 h-3 rounded bg-blue-500"></div>
+                                            <span className="text-gray-600">Other</span>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-3">
                                     <select
@@ -703,11 +815,13 @@
                             ) : (
                                 sortedAppointments.map(apt => {
                                     const therapist = careTeam.find(t => t.id === apt.careTeamMemberId);
-                                    const isPast = new Date(apt.startTime) < new Date();
+                                    const isPast = toEasternTime(apt.startTime) < new Date();
                                     const isImported = apt.isImported || apt.source === 'google-calendar';
+                                    const therapyType = isImported ? detectTherapyType(apt.notes) : 'other';
+                                    const colors = getTherapyColor(therapyType);
                                     
                                     return (
-                                        <div key={apt.id} className={`p-4 hover:bg-gray-50 ${isImported ? 'bg-purple-50' : ''}`}>
+                                        <div key={apt.id} className={`p-4 hover:bg-gray-50 border-l-4 ${colors.border.replace('border-', 'border-l-')}`}>
                                             <div className="flex justify-between items-start">
                                                 <div className="flex-1">
                                                     <div className="flex items-center space-x-2 mb-2">
@@ -716,8 +830,8 @@
                                                                 <span className="font-semibold text-gray-900">
                                                                     {apt.notes || 'Imported Event'}
                                                                 </span>
-                                                                <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">
-                                                                    Google Calendar
+                                                                <span className={`text-xs px-2 py-1 rounded ${colors.bg} ${colors.text}`}>
+                                                                    {colors.name}
                                                                 </span>
                                                             </>
                                                         ) : (
@@ -742,7 +856,7 @@
                                                     <div className="text-sm text-gray-600 space-y-1">
                                                         <p>
                                                             <i className="fas fa-calendar mr-2 text-gray-400"></i>
-                                                            {new Date(apt.startTime).toLocaleDateString('en-US', {
+                                                            {formatDateET(apt.startTime, {
                                                                 weekday: 'long',
                                                                 year: 'numeric',
                                                                 month: 'long',
@@ -751,10 +865,7 @@
                                                         </p>
                                                         <p>
                                                             <i className="fas fa-clock mr-2 text-gray-400"></i>
-                                                            {new Date(apt.startTime).toLocaleTimeString('en-US', {
-                                                                hour: 'numeric',
-                                                                minute: '2-digit'
-                                                            })} ({apt.durationMinutes} min)
+                                                            {formatTimeET(apt.startTime)} ET ({apt.durationMinutes} min)
                                                         </p>
                                                         <p>
                                                             <i className="fas fa-location-dot mr-2 text-gray-400"></i>
@@ -803,7 +914,7 @@
 
             const getAppointmentsForDay = (date) => {
                 return appointments.filter(apt => {
-                    const aptDate = new Date(apt.startTime);
+                    const aptDate = toEasternTime(apt.startTime);
                     return aptDate.getFullYear() === date.getFullYear() &&
                            aptDate.getMonth() === date.getMonth() &&
                            aptDate.getDate() === date.getDate();
@@ -876,19 +987,18 @@
                                             {dayAppointments.slice(0, 3).map(apt => {
                                                 const therapist = careTeam.find(t => t.id === apt.careTeamMemberId);
                                                 const isImported = apt.isImported || apt.source === 'google-calendar';
-                                                const time = new Date(apt.startTime).toLocaleTimeString('en-US', {
-                                                    hour: 'numeric',
-                                                    minute: '2-digit'
-                                                });
+                                                const therapyType = isImported ? detectTherapyType(apt.notes) : 'other';
+                                                const colors = getTherapyColor(therapyType);
+                                                const time = formatTimeET(apt.startTime);
 
                                                 return (
                                                     <button
                                                         key={apt.id}
                                                         onClick={() => !isImported && onSelectAppointment(apt)}
-                                                        className={`w-full text-left text-xs px-2 py-1 rounded truncate ${
-                                                            isImported 
-                                                                ? 'bg-purple-100 text-purple-800 cursor-default'
-                                                                : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                                                        className={`w-full text-left text-xs px-2 py-1 rounded truncate border ${
+                                                            colors.bg
+                                                        } ${colors.border} ${colors.text} ${
+                                                            isImported ? 'cursor-default' : colors.hover
                                                         }`}
                                                         title={isImported ? apt.notes : therapist?.name}
                                                     >
@@ -925,7 +1035,7 @@
 
             const getAppointmentsForDay = (date) => {
                 return appointments.filter(apt => {
-                    const aptDate = new Date(apt.startTime);
+                    const aptDate = toEasternTime(apt.startTime);
                     return aptDate.getFullYear() === date.getFullYear() &&
                            aptDate.getMonth() === date.getMonth() &&
                            aptDate.getDate() === date.getDate();
@@ -991,22 +1101,21 @@
                                             dayAppointments.map(apt => {
                                                 const therapist = careTeam.find(t => t.id === apt.careTeamMemberId);
                                                 const isImported = apt.isImported || apt.source === 'google-calendar';
-                                                const time = new Date(apt.startTime).toLocaleTimeString('en-US', {
-                                                    hour: 'numeric',
-                                                    minute: '2-digit'
-                                                });
+                                                const therapyType = isImported ? detectTherapyType(apt.notes) : 'other';
+                                                const colors = getTherapyColor(therapyType);
+                                                const time = formatTimeET(apt.startTime);
 
                                                 return (
                                                     <button
                                                         key={apt.id}
                                                         onClick={() => !isImported && onSelectAppointment(apt)}
-                                                        className={`w-full text-left p-2 rounded text-xs ${
-                                                            isImported 
-                                                                ? 'bg-purple-100 border border-purple-200 cursor-default'
-                                                                : 'bg-blue-100 border border-blue-200 hover:bg-blue-200'
+                                                        className={`w-full text-left p-2 rounded text-xs border ${
+                                                            colors.bg
+                                                        } ${colors.border} ${colors.text} ${
+                                                            isImported ? 'cursor-default' : colors.hover
                                                         }`}
                                                     >
-                                                        <div className="font-semibold">{time}</div>
+                                                        <div className="font-semibold">{time} ET</div>
                                                         <div className="truncate">
                                                             {isImported ? apt.notes : therapist?.name}
                                                         </div>
