@@ -907,6 +907,146 @@
             );
         }
 
+        function EventDetailModal({ appointment, careTeam, onClose, onEdit }) {
+            useEffect(() => {
+                const handleEscape = (e) => {
+                    if (e.key === 'Escape') onClose();
+                };
+                document.addEventListener('keydown', handleEscape);
+                return () => document.removeEventListener('keydown', handleEscape);
+            }, [onClose]);
+
+            const therapist = careTeam.find(t => t.id === appointment.careTeamMemberId);
+            const isImported = appointment.isImported || appointment.source === 'google-calendar';
+            const therapyType = isImported ? detectTherapyType(appointment.notes) : 'other';
+            const colors = getTherapyColor(therapyType);
+
+            return (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+                    onClick={onClose}
+                >
+                    <div 
+                        className="bg-white rounded-lg shadow-xl max-w-lg w-full"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className={`${colors.bg} ${colors.text} p-6 rounded-t-lg border-b-4 ${colors.border}`}>
+                            <div className="flex justify-between items-start">
+                                <div className="flex-1">
+                                    <h3 className="text-2xl font-bold mb-2">
+                                        {isImported ? appointment.notes : therapist?.name || 'Unknown'}
+                                    </h3>
+                                    <div className="flex items-center space-x-2">
+                                        <span className="inline-block px-3 py-1 bg-white rounded-full text-sm font-semibold">
+                                            {colors.name}
+                                        </span>
+                                        {!isImported && therapist?.discipline && (
+                                            <span className="inline-block px-3 py-1 bg-white rounded-full text-sm">
+                                                {therapist.discipline}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={onClose}
+                                    className="text-gray-600 hover:text-gray-900 ml-4"
+                                >
+                                    <i className="fas fa-times text-xl"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 space-y-4">
+                            <div className="space-y-3">
+                                <div className="flex items-start">
+                                    <i className="fas fa-calendar w-6 text-gray-400 mt-1"></i>
+                                    <div className="ml-3">
+                                        <div className="font-medium text-gray-900">
+                                            {formatDateET(appointment.startTime, {
+                                                weekday: 'long',
+                                                year: 'numeric',
+                                                month: 'long',
+                                                day: 'numeric'
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start">
+                                    <i className="fas fa-clock w-6 text-gray-400 mt-1"></i>
+                                    <div className="ml-3">
+                                        <div className="font-medium text-gray-900">
+                                            {formatTimeET(appointment.startTime)} ET
+                                        </div>
+                                        <div className="text-sm text-gray-600">
+                                            {appointment.durationMinutes} minutes
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start">
+                                    <i className="fas fa-location-dot w-6 text-gray-400 mt-1"></i>
+                                    <div className="ml-3">
+                                        <div className="font-medium text-gray-900">
+                                            {appointment.location}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {!isImported && appointment.status && (
+                                    <div className="flex items-start">
+                                        <i className="fas fa-info-circle w-6 text-gray-400 mt-1"></i>
+                                        <div className="ml-3">
+                                            <div className="font-medium text-gray-900">
+                                                Status: <span className={`${
+                                                    appointment.status === 'scheduled' ? 'text-green-600' :
+                                                    appointment.status === 'completed' ? 'text-gray-600' :
+                                                    appointment.status === 'canceled' ? 'text-red-600' :
+                                                    'text-yellow-600'
+                                                }`}>{appointment.status}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {appointment.notes && !isImported && (
+                                    <div className="flex items-start">
+                                        <i className="fas fa-note-sticky w-6 text-gray-400 mt-1"></i>
+                                        <div className="ml-3">
+                                            <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                                                {appointment.notes}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="bg-gray-50 px-6 py-4 rounded-b-lg flex justify-between items-center">
+                            <div className="text-sm text-gray-500">
+                                Press <kbd className="px-2 py-1 bg-white border border-gray-300 rounded">Esc</kbd> to close
+                            </div>
+                            {!isImported && (
+                                <button
+                                    onClick={() => {
+                                        onEdit(appointment);
+                                        onClose();
+                                    }}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                                >
+                                    <i className="fas fa-edit mr-2"></i>
+                                    Edit
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         function DayDetailModal({ date, appointments, careTeam, onClose, onSelectAppointment }) {
             useEffect(() => {
                 const handleEscape = (e) => {
@@ -1031,6 +1171,7 @@
 
         function MonthView({ appointments, careTeam, currentDate, onNavigate, onSelectAppointment }) {
             const [selectedDate, setSelectedDate] = useState(null);
+            const [selectedEvent, setSelectedEvent] = useState(null);
             
             const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
             const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -1067,6 +1208,15 @@
 
             return (
                 <div className="bg-white rounded-lg shadow">
+                    {selectedEvent && (
+                        <EventDetailModal
+                            appointment={selectedEvent}
+                            careTeam={careTeam}
+                            onClose={() => setSelectedEvent(null)}
+                            onEdit={onSelectAppointment}
+                        />
+                    )}
+                    
                     {selectedDate && (
                         <DayDetailModal
                             date={selectedDate}
@@ -1138,13 +1288,14 @@
                                                 return (
                                                     <button
                                                         key={apt.id}
-                                                        onClick={() => !isImported && onSelectAppointment(apt)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedEvent(apt);
+                                                        }}
                                                         className={`w-full text-left text-xs px-2 py-1 rounded truncate border ${
                                                             colors.bg
-                                                        } ${colors.border} ${colors.text} ${
-                                                            isImported ? 'cursor-default' : colors.hover
-                                                        }`}
-                                                        title={isImported ? apt.notes : therapist?.name}
+                                                        } ${colors.border} ${colors.text} ${colors.hover}`}
+                                                        title={`Click to view details - ${isImported ? apt.notes : therapist?.name}`}
                                                     >
                                                         {time} {isImported ? apt.notes?.substring(0, 15) : therapist?.name}
                                                     </button>
@@ -1166,6 +1317,8 @@
         }
 
         function WeekView({ appointments, careTeam, currentDate, onNavigate, onSelectAppointment }) {
+            const [selectedEvent, setSelectedEvent] = useState(null);
+            
             // Get start of week (Sunday)
             const startOfWeek = new Date(currentDate);
             startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
@@ -1195,6 +1348,15 @@
 
             return (
                 <div className="bg-white rounded-lg shadow">
+                    {selectedEvent && (
+                        <EventDetailModal
+                            appointment={selectedEvent}
+                            careTeam={careTeam}
+                            onClose={() => setSelectedEvent(null)}
+                            onEdit={onSelectAppointment}
+                        />
+                    )}
+                    
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b">
                         <button
@@ -1252,12 +1414,10 @@
                                                 return (
                                                     <button
                                                         key={apt.id}
-                                                        onClick={() => !isImported && onSelectAppointment(apt)}
+                                                        onClick={() => setSelectedEvent(apt)}
                                                         className={`w-full text-left p-2 rounded text-xs border ${
                                                             colors.bg
-                                                        } ${colors.border} ${colors.text} ${
-                                                            isImported ? 'cursor-default' : colors.hover
-                                                        }`}
+                                                        } ${colors.border} ${colors.text} ${colors.hover}`}
                                                     >
                                                         <div className="font-semibold">{time} ET</div>
                                                         <div className="truncate">
