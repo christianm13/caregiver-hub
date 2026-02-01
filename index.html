@@ -145,7 +145,10 @@
             appointments: [],
             messages: [],
             invoices: [],
-            importedEvents: [] // Events imported from Google Calendar
+            importedEvents: [], // Events imported from Google Calendar
+            sessionNotes: [], // Post-session surveys
+            dailyCheckins: [], // Daily check-ins
+            weeklyReflections: [] // Weekly reflections
         };
 
         function App() {
@@ -194,6 +197,18 @@
                                 onUpdate={(messages) => updateData('messages', messages)}
                             />
                         )}
+                        {currentView === 'progress' && (
+                            <ProgressView
+                                sessionNotes={data.sessionNotes || []}
+                                dailyCheckins={data.dailyCheckins || []}
+                                weeklyReflections={data.weeklyReflections || []}
+                                appointments={data.appointments}
+                                careTeam={data.careTeam}
+                                onUpdateSessionNotes={(notes) => updateData('sessionNotes', notes)}
+                                onUpdateDailyCheckins={(checkins) => updateData('dailyCheckins', checkins)}
+                                onUpdateWeeklyReflections={(reflections) => updateData('weeklyReflections', reflections)}
+                            />
+                        )}
                         {currentView === 'billing' && (
                             <BillingView 
                                 invoices={data.invoices}
@@ -217,6 +232,7 @@
                 { id: 'home', label: 'Home', icon: 'fa-home' },
                 { id: 'schedule', label: 'Schedule', icon: 'fa-calendar' },
                 { id: 'messages', label: 'Messages', icon: 'fa-comments' },
+                { id: 'progress', label: 'Progress', icon: 'fa-chart-line' },
                 { id: 'billing', label: 'Billing', icon: 'fa-file-invoice-dollar' },
                 { id: 'team', label: 'Care Team', icon: 'fa-users' }
             ];
@@ -903,6 +919,181 @@
                             )}
                         </div>
                     )}
+                </div>
+            );
+        }
+
+        function PostSessionSurvey({ appointment, careTeam, onSave, onCancel }) {
+            const therapist = careTeam.find(t => t.id === appointment?.careTeamMemberId);
+            const [formData, setFormData] = useState({
+                appointmentId: appointment?.id || Date.now(),
+                therapistName: therapist?.name || '',
+                date: appointment?.startTime || new Date().toISOString(),
+                whatWorkedOn: '',
+                performance: 3,
+                energyBefore: 3,
+                energyAfter: 3,
+                painLevel: 5,
+                concernsOrWins: ''
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSave(formData);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
+                            <h3 className="text-2xl font-bold">Post-Session Check-in</h3>
+                            <p className="text-sm mt-1 text-blue-100">
+                                {therapist?.name} • {formatDateET(appointment?.startTime || new Date().toISOString(), { 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit'
+                                })} ET
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    1. What did you work on today? *
+                                </label>
+                                <textarea
+                                    required
+                                    value={formData.whatWorkedOn}
+                                    onChange={(e) => setFormData({...formData, whatWorkedOn: e.target.value})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    rows="3"
+                                    placeholder="E.g., Balance exercises, grip strength, speech exercises..."
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                    2. How did she do? *
+                                </label>
+                                <div className="flex justify-center space-x-3">
+                                    {[1, 2, 3, 4, 5].map(rating => (
+                                        <button
+                                            key={rating}
+                                            type="button"
+                                            onClick={() => setFormData({...formData, performance: rating})}
+                                            className={`text-4xl transition-all ${
+                                                formData.performance === rating 
+                                                    ? 'transform scale-125' 
+                                                    : 'opacity-40 hover:opacity-70'
+                                            }`}
+                                        >
+                                            {rating === 1 ? '😞' : rating === 2 ? '😐' : rating === 3 ? '😊' : rating === 4 ? '😃' : '🤩'}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-center text-xs text-gray-500 mt-2">
+                                    {formData.performance === 1 ? 'Struggled' : 
+                                     formData.performance === 2 ? 'Below average' :
+                                     formData.performance === 3 ? 'Normal' :
+                                     formData.performance === 4 ? 'Good progress' : 'Excellent!'}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        3. Energy Before Session *
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="5"
+                                        value={formData.energyBefore}
+                                        onChange={(e) => setFormData({...formData, energyBefore: parseInt(e.target.value)})}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Low</span>
+                                        <span className="font-semibold text-blue-600">{formData.energyBefore}/5</span>
+                                        <span>High</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Energy After Session *
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="5"
+                                        value={formData.energyAfter}
+                                        onChange={(e) => setFormData({...formData, energyAfter: parseInt(e.target.value)})}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                        <span>Low</span>
+                                        <span className="font-semibold text-blue-600">{formData.energyAfter}/5</span>
+                                        <span>High</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    4. Pain Level (1-10) *
+                                </label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="10"
+                                    value={formData.painLevel}
+                                    onChange={(e) => setFormData({...formData, painLevel: parseInt(e.target.value)})}
+                                    className="w-full"
+                                />
+                                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                    <span>No pain</span>
+                                    <span className={`font-semibold ${
+                                        formData.painLevel <= 3 ? 'text-green-600' :
+                                        formData.painLevel <= 6 ? 'text-yellow-600' :
+                                        'text-red-600'
+                                    }`}>{formData.painLevel}/10</span>
+                                    <span>Severe</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    5. Any concerns or breakthroughs? (Optional)
+                                </label>
+                                <textarea
+                                    value={formData.concernsOrWins}
+                                    onChange={(e) => setFormData({...formData, concernsOrWins: e.target.value})}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    rows="2"
+                                    placeholder="Any important notes, concerns, or wins to remember..."
+                                />
+                            </div>
+
+                            <div className="flex justify-end space-x-3 pt-4 border-t">
+                                <button
+                                    type="button"
+                                    onClick={onCancel}
+                                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                                >
+                                    <i className="fas fa-check mr-2"></i>
+                                    Save Session Notes
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             );
         }
@@ -2367,6 +2558,392 @@
                                 Save Message
                             </button>
                         </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function ProgressView({ sessionNotes, dailyCheckins, weeklyReflections, appointments, careTeam, onUpdateSessionNotes, onUpdateDailyCheckins, onUpdateWeeklyReflections }) {
+            const [activeTab, setActiveTab] = useState('overview');
+            const [showPostSession, setShowPostSession] = useState(false);
+            const [showDailyCheckin, setShowDailyCheckin] = useState(false);
+            const [showWeeklyReflection, setShowWeeklyReflection] = useState(false);
+            const [selectedAppointment, setSelectedAppointment] = useState(null);
+
+            const recentSessions = sessionNotes.slice(0, 5);
+            const thisWeekSessions = sessionNotes.filter(note => {
+                const noteDate = new Date(note.date);
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                return noteDate >= weekAgo;
+            });
+
+            const handlePostSessionSave = (formData) => {
+                onUpdateSessionNotes([...sessionNotes, { ...formData, id: Date.now() }]);
+                setShowPostSession(false);
+                setSelectedAppointment(null);
+            };
+
+            const handleDailyCheckinSave = (formData) => {
+                onUpdateDailyCheckins([...dailyCheckins, { ...formData, id: Date.now(), date: new Date().toISOString() }]);
+                setShowDailyCheckin(false);
+            };
+
+            const handleWeeklyReflectionSave = (formData) => {
+                onUpdateWeeklyReflections([...weeklyReflections, { ...formData, id: Date.now(), date: new Date().toISOString() }]);
+                setShowWeeklyReflection(false);
+            };
+
+            return (
+                <div className="space-y-4">
+                    {showPostSession && (
+                        <PostSessionSurvey
+                            appointment={selectedAppointment}
+                            careTeam={careTeam}
+                            onSave={handlePostSessionSave}
+                            onCancel={() => {
+                                setShowPostSession(false);
+                                setSelectedAppointment(null);
+                            }}
+                        />
+                    )}
+
+                    {showDailyCheckin && (
+                        <DailyCheckinForm
+                            onSave={handleDailyCheckinSave}
+                            onCancel={() => setShowDailyCheckin(false)}
+                        />
+                    )}
+
+                    {showWeeklyReflection && (
+                        <WeeklyReflectionForm
+                            onSave={handleWeeklyReflectionSave}
+                            onCancel={() => setShowWeeklyReflection(false)}
+                        />
+                    )}
+
+                    {/* Header */}
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900">Progress Tracking</h2>
+                                <p className="text-sm text-gray-600 mt-1">Monitor recovery journey and therapy effectiveness</p>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2 mt-4 md:mt-0">
+                                <button
+                                    onClick={() => setShowPostSession(true)}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                                >
+                                    <i className="fas fa-notes-medical mr-2"></i>
+                                    Log Session
+                                </button>
+                                <button
+                                    onClick={() => setShowDailyCheckin(true)}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+                                >
+                                    <i className="fas fa-calendar-day mr-2"></i>
+                                    Daily Check-in
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Quick Stats */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+                            <div className="bg-blue-50 p-4 rounded-lg">
+                                <div className="text-sm text-blue-600 font-medium">This Week</div>
+                                <div className="text-2xl font-bold text-blue-900 mt-1">{thisWeekSessions.length}</div>
+                                <div className="text-xs text-blue-600 mt-1">Therapy Sessions</div>
+                            </div>
+                            <div className="bg-green-50 p-4 rounded-lg">
+                                <div className="text-sm text-green-600 font-medium">Daily Check-ins</div>
+                                <div className="text-2xl font-bold text-green-900 mt-1">{dailyCheckins.length}</div>
+                                <div className="text-xs text-green-600 mt-1">Total Logged</div>
+                            </div>
+                            <div className="bg-purple-50 p-4 rounded-lg">
+                                <div className="text-sm text-purple-600 font-medium">Reflections</div>
+                                <div className="text-2xl font-bold text-purple-900 mt-1">{weeklyReflections.length}</div>
+                                <div className="text-xs text-purple-600 mt-1">Weeks Tracked</div>
+                            </div>
+                            <div className="bg-orange-50 p-4 rounded-lg">
+                                <div className="text-sm text-orange-600 font-medium">Total Sessions</div>
+                                <div className="text-2xl font-bold text-orange-900 mt-1">{sessionNotes.length}</div>
+                                <div className="text-xs text-orange-600 mt-1">All Time</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="border-b border-gray-200">
+                            <nav className="flex space-x-1 p-2">
+                                {[
+                                    { id: 'overview', label: 'Overview', icon: 'fa-chart-line' },
+                                    { id: 'sessions', label: 'Session Notes', icon: 'fa-notes-medical' },
+                                    { id: 'daily', label: 'Daily Check-ins', icon: 'fa-calendar-day' },
+                                    { id: 'weekly', label: 'Weekly Reflections', icon: 'fa-clipboard' }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                                            activeTab === tab.id
+                                                ? 'bg-blue-100 text-blue-700'
+                                                : 'text-gray-600 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        <i className={`fas ${tab.icon} mr-2`}></i>
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </nav>
+                        </div>
+
+                        <div className="p-6">
+                            {activeTab === 'overview' && (
+                                <div className="space-y-6">
+                                    <div>
+                                        <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+                                        {recentSessions.length === 0 ? (
+                                            <div className="text-center py-12 text-gray-500">
+                                                <i className="fas fa-clipboard text-4xl mb-3 text-gray-300"></i>
+                                                <p>No session notes yet</p>
+                                                <button
+                                                    onClick={() => setShowPostSession(true)}
+                                                    className="mt-2 text-blue-600 text-sm font-medium hover:text-blue-700"
+                                                >
+                                                    Log your first session
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {recentSessions.map(note => {
+                                                    const therapist = careTeam.find(t => t.name === note.therapistName);
+                                                    return (
+                                                        <div key={note.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300">
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <div>
+                                                                    <div className="font-semibold text-gray-900">{note.therapistName}</div>
+                                                                    <div className="text-sm text-gray-600">
+                                                                        {formatDateET(note.date, { 
+                                                                            month: 'short', 
+                                                                            day: 'numeric',
+                                                                            hour: 'numeric',
+                                                                            minute: '2-digit'
+                                                                        })} ET
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center space-x-2">
+                                                                    <span className="text-2xl">
+                                                                        {note.performance === 1 ? '😞' : 
+                                                                         note.performance === 2 ? '😐' :
+                                                                         note.performance === 3 ? '😊' :
+                                                                         note.performance === 4 ? '😃' : '🤩'}
+                                                                    </span>
+                                                                    {note.painLevel > 6 && (
+                                                                        <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+                                                                            Pain: {note.painLevel}/10
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-sm text-gray-700 mb-2">{note.whatWorkedOn}</p>
+                                                            <div className="flex items-center space-x-4 text-xs text-gray-500">
+                                                                <span>Energy: {note.energyBefore}→{note.energyAfter}</span>
+                                                                <span>Pain: {note.painLevel}/10</span>
+                                                            </div>
+                                                            {note.concernsOrWins && (
+                                                                <p className="text-sm text-gray-600 italic mt-2 pt-2 border-t">
+                                                                    {note.concernsOrWins}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'sessions' && (
+                                <div className="space-y-4">
+                                    {sessionNotes.length === 0 ? (
+                                        <div className="text-center py-12 text-gray-500">
+                                            <i className="fas fa-notes-medical text-4xl mb-3 text-gray-300"></i>
+                                            <p>No session notes yet</p>
+                                            <button
+                                                onClick={() => setShowPostSession(true)}
+                                                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                            >
+                                                Log First Session
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        sessionNotes.map(note => {
+                                            const therapist = careTeam.find(t => t.name === note.therapistName);
+                                            return (
+                                                <div key={note.id} className="border border-gray-200 rounded-lg p-4">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <div className="font-semibold text-lg text-gray-900">{note.therapistName}</div>
+                                                            <div className="text-sm text-gray-600">
+                                                                {formatDateET(note.date, {
+                                                                    weekday: 'long',
+                                                                    month: 'short',
+                                                                    day: 'numeric',
+                                                                    hour: 'numeric',
+                                                                    minute: '2-digit'
+                                                                })} ET
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-3xl">
+                                                            {note.performance === 1 ? '😞' : 
+                                                             note.performance === 2 ? '😐' :
+                                                             note.performance === 3 ? '😊' :
+                                                             note.performance === 4 ? '😃' : '🤩'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-4 space-y-2">
+                                                        <div>
+                                                            <span className="text-sm font-medium text-gray-700">Worked on:</span>
+                                                            <p className="text-sm text-gray-900 mt-1">{note.whatWorkedOn}</p>
+                                                        </div>
+                                                        <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t">
+                                                            <div>
+                                                                <span className="text-xs text-gray-500">Energy</span>
+                                                                <p className="text-sm font-medium">{note.energyBefore} → {note.energyAfter}</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-xs text-gray-500">Pain Level</span>
+                                                                <p className={`text-sm font-medium ${
+                                                                    note.painLevel <= 3 ? 'text-green-600' :
+                                                                    note.painLevel <= 6 ? 'text-yellow-600' :
+                                                                    'text-red-600'
+                                                                }`}>{note.painLevel}/10</p>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-xs text-gray-500">Performance</span>
+                                                                <p className="text-sm font-medium">
+                                                                    {note.performance === 1 ? 'Struggled' :
+                                                                     note.performance === 2 ? 'Below avg' :
+                                                                     note.performance === 3 ? 'Normal' :
+                                                                     note.performance === 4 ? 'Good' : 'Excellent'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        {note.concernsOrWins && (
+                                                            <div className="mt-3 pt-3 border-t">
+                                                                <span className="text-sm font-medium text-gray-700">Notes:</span>
+                                                                <p className="text-sm text-gray-900 mt-1 italic">{note.concernsOrWins}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            )}
+
+                            {activeTab === 'daily' && (
+                                <div className="text-center py-12 text-gray-500">
+                                    <i className="fas fa-calendar-day text-4xl mb-3 text-gray-300"></i>
+                                    <p>Daily check-ins coming soon</p>
+                                    <p className="text-sm mt-1">Track energy, mood, and pain daily</p>
+                                </div>
+                            )}
+
+                            {activeTab === 'weekly' && (
+                                <div className="text-center py-12 text-gray-500">
+                                    <i className="fas fa-clipboard text-4xl mb-3 text-gray-300"></i>
+                                    <p>Weekly reflections coming soon</p>
+                                    <p className="text-sm mt-1">Review progress and set goals weekly</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function DailyCheckinForm({ onSave, onCancel }) {
+            const [formData, setFormData] = useState({
+                sleepQuality: 3,
+                energyLevel: 3,
+                painLevel: 5,
+                mood: 3,
+                notes: ''
+            });
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
+                        <div className="bg-green-600 text-white p-6 rounded-t-lg">
+                            <h3 className="text-xl font-bold">Daily Check-in</h3>
+                            <p className="text-sm text-green-100">Quick 30-second update</p>
+                        </div>
+                        <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Sleep Quality</label>
+                                <input type="range" min="1" max="5" value={formData.sleepQuality} 
+                                    onChange={(e) => setFormData({...formData, sleepQuality: parseInt(e.target.value)})}
+                                    className="w-full" />
+                                <div className="flex justify-between text-xs text-gray-500">
+                                    <span>Poor</span><span>{formData.sleepQuality}/5</span><span>Great</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Energy Today</label>
+                                <input type="range" min="1" max="5" value={formData.energyLevel}
+                                    onChange={(e) => setFormData({...formData, energyLevel: parseInt(e.target.value)})}
+                                    className="w-full" />
+                                <div className="flex justify-between text-xs text-gray-500">
+                                    <span>Low</span><span>{formData.energyLevel}/5</span><span>High</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Pain Level</label>
+                                <input type="range" min="0" max="10" value={formData.painLevel}
+                                    onChange={(e) => setFormData({...formData, painLevel: parseInt(e.target.value)})}
+                                    className="w-full" />
+                                <div className="flex justify-between text-xs text-gray-500">
+                                    <span>None</span><span>{formData.painLevel}/10</span><span>Severe</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Mood</label>
+                                <input type="range" min="1" max="5" value={formData.mood}
+                                    onChange={(e) => setFormData({...formData, mood: parseInt(e.target.value)})}
+                                    className="w-full" />
+                                <div className="flex justify-between text-xs text-gray-500">
+                                    <span>Low</span><span>{formData.mood}/5</span><span>Great</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Notes (Optional)</label>
+                                <textarea value={formData.notes}
+                                    onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                                    className="w-full px-3 py-2 border rounded-lg" rows="2"
+                                    placeholder="Anything notable today?" />
+                            </div>
+                            <div className="flex justify-end space-x-3 pt-4">
+                                <button type="button" onClick={onCancel}
+                                    className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+                                <button type="submit"
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        function WeeklyReflectionForm({ onSave, onCancel }) {
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                        <h3 className="text-xl font-bold mb-4">Weekly Reflection (Coming Soon)</h3>
+                        <button onClick={onCancel} className="px-4 py-2 bg-gray-600 text-white rounded-lg">Close</button>
                     </div>
                 </div>
             );
